@@ -51,8 +51,11 @@ async function run() {
   try {
     const db = client.db('assets-management');
     const usersCollection = db.collection('users');
+    const assetsCollection = db.collection('assets');
 
     // save or update a user in db
+
+    // original
     app.post('/users/:email', async (req, res) => {
       const email = req.params.email;
       const query = { email };
@@ -64,9 +67,59 @@ async function run() {
       }
       const result = await usersCollection.insertOne({
         ...user,
+        role: 'employee',
         timestamp: Date.now(),
       });
       res.send(result);
+    });
+
+    // Add a new asset (Only for HR Manager)
+    app.post('/assets', verifyToken, async (req, res) => {
+      const assetsData = req.body;
+      const result = await assetsCollection.insertOne(assetsData);
+      console.log(result);
+      res.send(result);
+    });
+
+    // Get All Assets with Search, Filter & Sorting
+    app.get('/assets', async (req, res) => {
+      try {
+        const { search, stock, type, sort } = req.query;
+        let query = {};
+
+        // Search by Product Name
+        if (search) {
+          query.productName = { $regex: search, $options: 'i' };
+        }
+
+        // Filter by Stock Status
+        if (stock === 'available') {
+          query.productQuantity = { $gt: 0 };
+        } else if (stock === 'out-of-stock') {
+          query.productQuantity = 0;
+        }
+
+        // Filter by Product Type
+        if (type) {
+          query.productType = type;
+        }
+
+        // Sorting by Quantity
+        let sortOptions = {};
+        if (sort === 'asc') {
+          sortOptions.productQuantity = 1;
+        } else if (sort === 'desc') {
+          sortOptions.productQuantity = -1;
+        }
+
+        const assets = await assetsCollection
+          .find(query)
+          .sort(sortOptions)
+          .toArray();
+        res.json(assets);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch assets' });
+      }
     });
 
     // Generate jwt token
